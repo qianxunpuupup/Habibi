@@ -1,5 +1,7 @@
 <template>
-  <div :class="bgStyle" :style="{ backgroundImage: `url(${bgImage})` }">
+  <div class="home" :class="{ 'is-mobile': isMobile }" :style="homeStyle">
+    <div class="figure-layer" aria-hidden="true"></div>
+
     <!-- 猫头鹰图片，可点击交互 -->
     <div
       v-if="!showLetter"
@@ -7,25 +9,25 @@
       :style="owlStyle"
       @click="onOwlClick"
     >
-      <img :src="owlImage" class="owl-img" alt="猫头鹰" />
+      <div class="owl-image" aria-hidden="true"></div>
       <div class="owl-ring"></div>
       <div class="owl-ring delay"></div>
       <div class="owl-hint">
         <span class="hint-icon">✉️</span>
-        <span class="hint-text">点击猫头鹰</span>
+        <span class="hint-text">点我看看</span>
       </div>
     </div>
 
-    <!-- 组件 -->
+    <!-- 信件 -->
     <LetterModal v-if="showLetter" :visible="showLetter" @close="closeLetter" />
-    <MusicPlayer />
+
+    <!-- 音乐播放器 -->
+    <!-- <MusicPlayer /> -->
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import bgImage from "../../assets/bg.png";
-import owlImage from "../../assets/owl.png";
 import LetterModal from "@/components/LetterModal.vue";
 import MusicPlayer from "@/components/MusicPlayer.vue";
 
@@ -33,47 +35,26 @@ const showLetter = ref(false);
 const winW = ref(window.innerWidth);
 const winH = ref(window.innerHeight);
 
-// 背景图原始尺寸
-const IMG_W = 2848;
-const IMG_H = 1600;
+// 根据设备类型切换不同背景图
+const isMobile = computed(() => winW.value <= 480);
+const homeStyle = computed(() => ({
+  "--music-player-h": `${Math.max(180, winH.value * 0.25)}px`,
+}));
 
 // owl.png 原始尺寸
 const OWL_IMG_W = 2048;
 const OWL_IMG_H = 1870;
 
-const bgStyle = computed(() => {
-  const vw = winW.value;
-  const vh = winH.value;
-
-  // 背景图宽高比
-  const bgRatio = IMG_W / IMG_H;
-  const winRatio = vw / vh;
-
-  return winRatio > bgRatio ? "wider" : "higher";
-});
-
-// 计算猫头鹰图片在视口中的尺寸
-// 宽度取视口的 28%，但不超过背景图中猫头鹰区域的宽度
+// 计算猫头鹰图片在视口中的尺寸：按背景高度 30% 控制，保持原图比例
 const owlStyle = computed(() => {
   const vw = winW.value;
   const vh = winH.value;
+  const owlH = Math.max(110, vh * 0.2);
+  const owlW = owlH * (OWL_IMG_W / OWL_IMG_H);
 
-  // 猫头鹰图片宽度占视口宽度的比例
-  let owlW = vw * 0.28;
-  // 手机端稍小
-  if (vw <= 480) owlW = vw * 0.34;
-  else if (vw <= 768) owlW = vw * 0.3;
-
-  // 高度按比例
-  let owlH = owlW * (OWL_IMG_H / OWL_IMG_W);
-
-  // 定位：左侧偏下，不遮挡背景中心区域
-  let left = vw * 0.04;
-  let top = vh - owlH - vh * 0.12;
-
-  // 确保不超出视口
-  if (left < 8) left = 8;
-  if (top < 8) top = 8;
+  // 位置：底部左侧，避免压住中心画面
+  const left = Math.max(8, vw * 0.04);
+  const top = Math.max(8, vh - owlH - vh * 0.78);
 
   return {
     left: `${left}px`,
@@ -100,31 +81,73 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
 </script>
 
 <style lang="scss" scoped>
-.wider {
+.home {
   position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-repeat: repeat;
-  background-position: center center;
-  background-size: 100% auto;
-  background-image: url("../../assets/bg.png");
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: cover;
+  background-image: url("../../assets/pc-bg.png");
+  --music-player-h: 25vh;
 }
 
-.higher {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  background-repeat: repeat;
-  background-position: center center;
-  background-size: auto 100%;
-  background-image: url("../../assets/bg.png");
+.home.is-mobile {
+  background-image: url("../../assets/mobile-bg.png");
+  background-position: center bottom;
+  background-size: cover;
+}
+
+.figure-layer {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translateX(-50%);
+  width: min(42vw, 620px);
+  height: min(70vh, 100%);
+  min-width: 120px;
+  min-height: 180px;
+  max-width: 100%;
+  max-height: 70vh;
+  aspect-ratio: 700 / 1040;
+  background-image: url("../../assets/figure.png");
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: contain;
+  background-color: transparent;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0.98;
+  transform-origin: center bottom;
+}
+
+.figure-layer::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0%;
+  transform: translateX(-50%);
+  width: 58%;
+  height: 9%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(61, 72, 79, 0.18) 0%,
+    rgba(61, 72, 79, 0.1) 28%,
+    rgba(61, 72, 79, 0.02) 62%,
+    rgba(61, 72, 79, 0) 100%
+  );
+  filter: blur(10px);
+  pointer-events: none;
+  z-index: -1;
 }
 
 /* 猫头鹰图片容器 */
 .owl-wrapper {
   position: absolute;
+  top: 10%;
+  left: 12%;
   z-index: 20;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -141,11 +164,14 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
   }
 }
 
-.owl-img {
+.owl-image {
   width: 100%;
   height: 100%;
-  object-fit: contain;
   pointer-events: none;
+  background-image: url("../../assets/owl.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
   /* 阴影增强立体感 */
   filter: drop-shadow(4px 8px 12px rgba(0, 0, 0, 0.35));
   animation: owlFloat 4s ease-in-out infinite;
@@ -164,8 +190,8 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
 /* 脉冲提示圈 */
 .owl-ring {
   position: absolute;
-  top: 28%;
-  left: 50%;
+  top: 68%;
+  left: 70%;
   transform: translate(-50%, -50%);
   width: 60px;
   height: 60px;
@@ -191,8 +217,8 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
 /* 提示标签 */
 .owl-hint {
   position: absolute;
-  top: -36px;
-  left: 50%;
+  top: 30%;
+  left: 90%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -223,6 +249,17 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
 
 /* ===== 手机端 (<= 480px) ===== */
 @media (max-width: 480px) {
+  .figure-layer {
+    width: min(50vw, 300px);
+    height: auto;
+    min-width: 230px;
+    min-height: 150px;
+    max-height: 62vh;
+    bottom: 7%;
+    background-size: contain;
+    filter: none;
+  }
+
   .owl-ring {
     width: 44px;
     height: 44px;
@@ -231,7 +268,7 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
   .owl-hint {
     font-size: 11px;
     padding: 4px 10px;
-    top: -28px;
+    top: 30%;
     gap: 3px;
   }
   .hint-icon {
@@ -247,7 +284,7 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
   }
   .owl-hint {
     font-size: 12px;
-    top: -32px;
+    top: 30%;
   }
 }
 </style>
