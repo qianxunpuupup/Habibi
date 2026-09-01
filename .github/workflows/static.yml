@@ -1,4 +1,9 @@
-name: Deploy GitHub Pages
+name: Deploy Pages
+# 重点！缺少这一段就会128权限报错
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 on:
   push:
