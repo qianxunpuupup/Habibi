@@ -22,7 +22,7 @@
     <LetterModal v-if="showLetter" :visible="showLetter" @close="closeLetter" />
 
     <!-- 音乐播放器 -->
-    <!-- <MusicPlayer /> -->
+    <MusicPlayer />
   </div>
 </template>
 
