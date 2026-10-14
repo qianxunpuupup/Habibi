@@ -31,28 +31,35 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import LetterModal from "@/components/LetterModal.vue";
 import MusicPlayer from "@/components/MusicPlayer.vue";
 
-const showLetter = ref(false);
-const winW = ref(window.innerWidth);
-const winH = ref(window.innerHeight);
+const showLetter = ref(false); // 信件弹窗显隐；打开时猫头鹰同时隐藏（v-if 互斥）
+const winW = ref(window.innerWidth); // 视口宽度（响应式，驱动设备判断与猫头鹰布局）
+const winH = ref(window.innerHeight); // 视口高度
 
-// 根据设备类型切换不同背景图
+// ==================== 设备判断与背景切换 ====================
+// 约定 <= 480px 为手机。isMobile 绑定到根元素 class，
+// 由 CSS（.home.is-mobile）将背景图从 pc-bg.png 换成 mobile-bg.png
 const isMobile = computed(() => winW.value <= 480);
+// 以 CSS 变量形式把"播放器建议高度"传给子组件样式使用
+// （视口高的 25%，最小 180px，防止小屏下播放器过矮）
 const homeStyle = computed(() => ({
   "--music-player-h": `${Math.max(180, winH.value * 0.25)}px`,
 }));
 
-// owl.png 原始尺寸
+// owl.png 原始尺寸（用于等比缩放，防止图片变形）
 const OWL_IMG_W = 2048;
 const OWL_IMG_H = 1870;
 
-// 计算猫头鹰图片在视口中的尺寸：按背景高度 30% 控制，保持原图比例
+// ==================== 猫头鹰布局计算 ====================
+// 以视口高度的 20% 定高（最小 110px），宽度按原图宽高比换算；
+// 位置固定在左上区域（top ≈ 视口 10%~22%），避免遮挡中间人物和底部播放器
 const owlStyle = computed(() => {
   const vw = winW.value;
   const vh = winH.value;
-  const owlH = Math.max(110, vh * 0.2);
-  const owlW = owlH * (OWL_IMG_W / OWL_IMG_H);
+  const owlH = Math.max(110, vh * 0.2); // 高度：20% 视口高，兜底 110px
+  const owlW = owlH * (OWL_IMG_W / OWL_IMG_H); // 宽度按原图比例推导
 
-  // 位置：底部左侧，避免压住中心画面
+  // left: 视口宽 4%，至少留 8px 边距
+  // top : 视口高 22% 处（vh - owlH - vh*0.78 等价于 vh*0.22 - owlH 的底部对齐写法）
   const left = Math.max(8, vw * 0.04);
   const top = Math.max(8, vh - owlH - vh * 0.78);
 
@@ -64,20 +71,23 @@ const owlStyle = computed(() => {
   };
 });
 
+// 点击猫头鹰 → 打开信件（LetterModal 内部触发打字机效果）
 const onOwlClick = () => {
   showLetter.value = true;
 };
+// 关闭信件 → 猫头鹰重新出现
 const closeLetter = () => {
   showLetter.value = false;
 };
 
+// 监听窗口尺寸变化：更新 winW/winH，触发 isMobile / owlStyle / homeStyle 重算
 const onResize = () => {
   winW.value = window.innerWidth;
   winH.value = window.innerHeight;
 };
 
 onMounted(() => window.addEventListener("resize", onResize));
-onUnmounted(() => window.removeEventListener("resize", onResize));
+onUnmounted(() => window.removeEventListener("resize", onResize)); // 卸载时移除监听，防止泄漏
 </script>
 
 <style lang="scss" scoped>
@@ -93,12 +103,14 @@ onUnmounted(() => window.removeEventListener("resize", onResize));
   --music-player-h: 25vh;
 }
 
+/* 手机端（isMobile=true 时根元素带此类）：换竖版手机背景图 */
 .home.is-mobile {
   background-image: url("../../assets/mobile-bg.png");
   background-position: center bottom;
   background-size: cover;
 }
 
+/* 中间人物立绘层：figure.png 居中靠底，pointer-events:none 不挡点击 */
 .figure-layer {
   position: absolute;
   left: 50%;

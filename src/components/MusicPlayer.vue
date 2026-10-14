@@ -382,15 +382,16 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 
-const isOpen = ref(true);
-const isPlaying = ref(false);
-const showList = ref(false);
-const currentTime = ref(0);
-const volume = ref(0.7);
-const isMuted = ref(false);
-const playMode = ref("loop"); // loop | single | random
-const currentIndex = ref(0);
-const bufferPercent = ref(0);
+// ==================== 播放器状态 ====================
+const isOpen = ref(true); // 播放器展开/收起（收起时只留迷你按钮）
+const isPlaying = ref(false); // 播放中标记（驱动唱片旋转/唱臂/频谱/图标切换）
+const showList = ref(false); // 播放列表显隐
+const currentTime = ref(0); // 当前播放进度（秒）
+const volume = ref(0.7); // 音量 0~1
+const isMuted = ref(false); // 静音标记
+const playMode = ref("loop"); // 播放模式：loop 列表循环 | single 单曲循环 | random 随机
+const currentIndex = ref(0); // 当前歌曲下标
+const bufferPercent = ref(0); // 缓冲条百分比（纯演示装饰）
 
 const songs = [
   { name: "海边的小房子", artist: "Habibi Band", duration: 245 },
@@ -415,14 +416,17 @@ const modeText = computed(
     })[playMode.value],
 );
 
-// Web Audio API 合成音效
-let audioCtx = null;
-let playInterval = null;
-let vizInterval = null;
-const barHeights = ref(new Array(28).fill(20));
+// ==================== Web Audio 合成音效 ====================
+// 没有真实音频文件，用 Web Audio API 实时合成一段 C 大调旋律作演示。
+// 原理：OscillatorNode（振荡器产生正弦波音符）→ GainNode（音量包络）→ 扬声器
+let audioCtx = null; // AudioContext 单例（首次点击播放时创建，需用户手势激活）
+let playInterval = null; // 主循环定时器：推进播放进度 + 调度音符
+let vizInterval = null; // 频谱柱动画定时器
+const barHeights = ref(new Array(28).fill(20)); // 28 根频谱柱的高度（%）
 
 const getBarHeight = (n) => barHeights.value[n - 1] || 20;
 
+// 初始化 AudioContext（必须在用户点击事件中调用，浏览器自动播放策略要求）
 const initAudio = () => {
   if (!audioCtx) {
     try {
@@ -431,33 +435,37 @@ const initAudio = () => {
       console.warn("Web Audio 不支持，仅演示动画");
     }
   }
+  // 浏览器可能将未激活的 AudioContext 置为 suspended，需要恢复
   if (audioCtx && audioCtx.state === "suspended") {
     audioCtx.resume();
   }
 };
 
-// 播放一个音符
+// 合成并播放单个音符
+// freq: 频率(Hz)  dur: 时长(秒)
+// 音量包络：0.0001 → 快速升到目标音量（防爆音）→ 指数衰减到 0（自然收尾）
 const playNote = (freq, dur = 0.3) => {
   if (!audioCtx) return;
   try {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.type = "sine";
+    osc.type = "sine"; // 正弦波，音色柔和
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(
-      volume.value * 0.35,
+      volume.value * 0.35, // 跟随音量滑块
       audioCtx.currentTime + 0.02,
     );
     gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start();
-    osc.stop(audioCtx.currentTime + dur);
+    osc.stop(audioCtx.currentTime + dur); // 播完即停，节点自动回收
   } catch (e) {}
 };
 
 // C大调简单旋律循环（海边温柔风）
+// 每项：[频率Hz, 拍数]，实际时长 = 拍数 × 0.35s
 const melody = [
   // 频率(Hz), 时长系数
   [523.25, 1],
@@ -487,10 +495,12 @@ const togglePlay = () => {
   }
 };
 
+// ==================== 播放控制 ====================
 const play = () => {
   isPlaying.value = true;
-  bufferPercent.value = 85 + Math.random() * 15;
-  // 主播放循环 - 推进时间 + 播放音符
+  bufferPercent.value = 85 + Math.random() * 15; // 缓冲条仅作装饰
+  // —— 主播放循环：每 50ms 用真实流逝时间(dt)推进进度并调度音符 ——
+  // 用 performance.now() 差值而不是固定 +0.05，避免定时器误差累积
   let last = performance.now();
   noteTimeLeft = 0;
   noteIdx = 0;
@@ -500,24 +510,25 @@ const play = () => {
     const dt = (now - last) / 1000;
     last = now;
 
+    // 推进播放进度，到达歌曲时长则按播放模式处理"播完"事件
     currentTime.value += dt;
     if (currentTime.value >= currentSong.value.duration) {
       handleEnded();
       return;
     }
 
-    // 音符调度
+    // 音符调度：剩余时间耗尽时取旋律中的下一个音符播放，并重置剩余时间
     noteTimeLeft -= dt;
     if (noteTimeLeft <= 0) {
       const [freq, beats] = melody[noteIdx % melody.length];
       const dur = beats * 0.35;
-      if (!isMuted.value) playNote(freq, dur);
+      if (!isMuted.value) playNote(freq, dur); // 静音时跳过发声但继续走调度
       noteTimeLeft = dur;
       noteIdx++;
     }
   }, 50);
 
-  // 频谱动画
+  // —— 频谱动画：随机柱高模拟律动（静音/音量小时柱子变矮）——
   vizInterval = setInterval(() => {
     barHeights.value = barHeights.value.map(() => {
       const base = isMuted.value ? 5 : volume.value * 60;
@@ -532,9 +543,10 @@ const pause = () => {
   clearInterval(vizInterval);
   playInterval = null;
   vizInterval = null;
-  barHeights.value = new Array(28).fill(15);
+  barHeights.value = new Array(28).fill(15); // 频谱柱归零位
 };
 
+// 歌曲播完后的行为，按播放模式分流：单曲循环 / 随机 / 列表循环
 const handleEnded = () => {
   if (playMode.value === "single") {
     currentTime.value = 0;
@@ -557,6 +569,7 @@ const handleEnded = () => {
   }
 };
 
+// 切歌：先暂停清理定时器，换歌后延时 50ms 重新起播（避免新旧定时器交叠）
 const playSong = (idx) => {
   pause();
   currentIndex.value = idx;
@@ -564,6 +577,7 @@ const playSong = (idx) => {
   setTimeout(() => play(), 50);
 };
 
+// 上一首/下一首：到边界时环绕（第一首再上一首 → 最后一首）
 const prevSong = () => {
   const idx =
     currentIndex.value <= 0 ? songs.length - 1 : currentIndex.value - 1;
@@ -575,12 +589,14 @@ const nextSong = () => {
   playSong(idx);
 };
 
+// 播放模式轮换：loop → single → random → loop
 const toggleMode = () => {
   playMode.value = { loop: "single", single: "random", random: "loop" }[
     playMode.value
   ];
 };
 
+// 点击进度条跳转：按点击位置占轨道宽度比例换算成秒
 const seekTo = (e) => {
   const rect = e.currentTarget
     .querySelector(".progress-bg")
@@ -589,6 +605,7 @@ const seekTo = (e) => {
   currentTime.value = ratio * currentSong.value.duration;
 };
 
+// 点击音量条设置音量：同样的比例换算；拖到 0 时视为静音
 const setVolume = (e) => {
   const rect = e.currentTarget
     .querySelector(".vol-track")
